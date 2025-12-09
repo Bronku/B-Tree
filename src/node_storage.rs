@@ -8,7 +8,7 @@ pub const PAGE_SIZE: usize = 512;
 
 #[derive(Debug)]
 pub struct NodeStorage {
-    file: File,
+    pub file: File,
     pub page_reads: usize,
     pub page_writes: usize,
 }

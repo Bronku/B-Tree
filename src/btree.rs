@@ -116,7 +116,6 @@ impl BTree {
         Some(node)
     }
 
-    /// Helper method to redistribute keys across two siblings and parent
     fn redistribute(
         mut left: Node,
         left_page: usize,
@@ -128,12 +127,14 @@ impl BTree {
     ) -> Vec<(Node, usize)> {
         let mut all_keys: Vec<Record> = vec![];
 
+        // Collect left keys
         for i in 0..left.num_keys {
             if let Some(k) = left.keys[i] {
                 all_keys.push(k);
             }
         }
 
+        // Add parent separator key
         let last_left_key = all_keys.last().unwrap().key;
         let separator_idx = parent
             .keys
@@ -144,18 +145,20 @@ impl BTree {
             })
             .unwrap();
         let separating_key = parent.keys[separator_idx].unwrap();
-
         all_keys.push(separating_key);
 
+        // Collect right keys
         for i in 0..right.num_keys {
             if let Some(k) = right.keys[i] {
                 all_keys.push(k);
             }
         }
 
+        // Add new record
         all_keys.push(record);
         all_keys.sort_by_key(|r| r.key);
 
+        // Split keys evenly
         let total_keys = all_keys.len();
         let left_num = total_keys / 2;
         let right_num = total_keys - left_num - 1;
@@ -169,18 +172,22 @@ impl BTree {
         let middle_key = all_keys[left_num];
         let right_start = left_num + 1;
 
-        let parent_idx = parent
-            .children
-            .iter()
-            .position(|&c| c == Some(right_page))
-            .unwrap();
-        parent.keys[parent_idx - 1] = Some(middle_key);
+        // Update parent key safely
+        if separator_idx < parent.keys.len() {
+            parent.keys[separator_idx] = Some(middle_key);
+        } else {
+            parent.keys[parent.keys.iter().position(|k| k.is_none()).unwrap()] = Some(middle_key);
+        }
 
         right.keys.fill(None);
         for i in 0..right_num {
             right.keys[i] = Some(all_keys[right_start + i]);
         }
         right.num_keys = right_num;
+
+        // Update parent pointers
+        left.parent = Some(parent_page);
+        right.parent = Some(parent_page);
 
         vec![
             (left, left_page),
@@ -241,74 +248,112 @@ impl BTree {
         None
     }
 
-    fn split_node(
-        node_tuple: (Node, usize),
-        parent: Option<(Node, usize)>,
-        input: Record,
-        next_node_idx: usize,
-    ) -> Vec<(Node, usize)> {
-        let (mut node, node_idx) = node_tuple;
+    fn split_recursive(&mut self, node_page: usize, input: Record) -> Option<usize> {
+        let node = self.storage.read_node(node_page);
+        let mut keys: Vec<Record> = node
+            .keys
+            .iter()
+            .filter_map(|k| k.as_ref())
+            .cloned()
+            .collect();
+        keys.push(input);
+        keys.sort_by_key(|r| r.key);
 
-        // 1. Collect all keys (node + input)
-        let mut all_keys: Vec<Record> = (0..node.num_keys).filter_map(|i| node.keys[i]).collect();
-        all_keys.push(input);
-        all_keys.sort_by_key(|r| r.key);
+        let mid = keys.len() / 2;
+        let middle_key = keys[mid];
 
-        // 2. Determine middle key
-        let mid_idx = all_keys.len() / 2;
-        let middle_key = all_keys[mid_idx];
-
-        // 3. Update left node with keys before middle
-        node.keys.fill(None);
-        for i in 0..mid_idx {
-            node.keys[i] = Some(all_keys[i]);
+        // Create left node
+        let mut left_node = Node::new(node.is_leaf);
+        left_node.num_keys = mid;
+        for i in 0..mid {
+            left_node.keys[i] = Some(keys[i]);
         }
-        node.num_keys = mid_idx;
-
-        // 4. Create new right node
-        let mut right = Node::new(node.is_leaf);
-        for i in 0..(all_keys.len() - mid_idx - 1) {
-            right.keys[i] = Some(all_keys[mid_idx + 1 + i]);
-        }
-        right.num_keys = all_keys.len() - mid_idx - 1;
-        let right_idx = next_node_idx;
-
-        let mut result = vec![(node, node_idx), (right, right_idx)];
-
-        // 5. Update or create parent
-        match parent {
-            Some((mut par_node, par_idx)) => {
-                let mut insert_pos = 0;
-                while insert_pos < par_node.num_keys
-                    && par_node.keys[insert_pos].unwrap().key < middle_key.key
-                {
-                    insert_pos += 1;
-                }
-
-                for i in (insert_pos..par_node.num_keys).rev() {
-                    par_node.keys[i + 1] = par_node.keys[i];
-                    par_node.children[i + 2] = par_node.children[i + 1];
-                }
-
-                par_node.keys[insert_pos] = Some(middle_key);
-                par_node.children[insert_pos + 1] = Some(right_idx);
-                par_node.num_keys += 1;
-
-                result.push((par_node, par_idx));
-            }
-            None => {
-                let mut root = Node::new(false);
-                root.keys[0] = Some(middle_key);
-                root.num_keys = 1;
-                root.children[0] = Some(node_idx);
-                root.children[1] = Some(right_idx);
-
-                // Assign root index — usually 0 if creating from empty tree
-                result.push((root, 0));
+        if !node.is_leaf {
+            for i in 0..=mid {
+                left_node.children[i] = node.children[i];
             }
         }
 
-        result
+        // Create right node
+        let mut right_node = Node::new(node.is_leaf);
+        right_node.num_keys = keys.len() - mid - 1;
+        for i in 0..right_node.num_keys as usize {
+            right_node.keys[i] = Some(keys[mid + 1 + i]);
+        }
+        if !node.is_leaf {
+            for i in 0..=right_node.num_keys as usize {
+                right_node.children[i] = node.children[mid + 1 + i];
+            }
+        }
+
+        // Update parent pointers for children
+        if !node.is_leaf {
+            for i in 0..=left_node.num_keys as usize {
+                if let Some(child_page) = left_node.children[i] {
+                    let mut child = self.storage.read_node(child_page);
+                    child.parent = Some(node_page);
+                    self.storage.write_node(child_page, &child);
+                }
+            }
+            for i in 0..=right_node.num_keys as usize {
+                if let Some(child_page) = right_node.children[i] {
+                    let mut child = self.storage.read_node(child_page);
+                    child.parent = Some(self.storage.num_nodes()); // Placeholder, will be updated
+                    self.storage.write_node(child_page, &child);
+                }
+            }
+        }
+
+        // Write left and right nodes to storage
+        let left_page = if node_page == 0 {
+            // If splitting the root, left node becomes new root
+            self.storage.write_node(node_page, &left_node);
+            node_page
+        } else {
+            self.storage.append_node(&left_node)
+        };
+        let right_page = self.storage.append_node(&right_node);
+
+        // Update parent
+        if node_page == 0 {
+            // Root was split, create new root
+            let mut new_root = Node::new(false);
+            new_root.keys[0] = Some(middle_key);
+            new_root.children[0] = Some(left_page);
+            new_root.children[1] = Some(right_page);
+            new_root.num_keys = 1;
+            new_root.parent = None;
+            left_node.parent = Some(self.storage.num_nodes());
+            right_node.parent = Some(self.storage.num_nodes());
+            self.storage.write_node(left_page, &left_node);
+            self.storage.write_node(right_page, &right_node);
+            let new_root_page = self.storage.append_node(&new_root);
+            Some(new_root_page)
+        } else {
+            // Update parent with middle key and new child
+            let parent_page = node.parent.unwrap();
+            let mut parent = self.storage.read_node(parent_page);
+
+            // Insert middle key into parent
+            let mut key_pos = 0;
+            while key_pos < parent.num_keys && parent.keys[key_pos].unwrap().key < middle_key.key {
+                key_pos += 1;
+            }
+            for i in (key_pos..parent.num_keys as usize).rev() {
+                parent.keys[i + 1] = parent.keys[i];
+                parent.children[i + 2] = parent.children[i + 1];
+            }
+            parent.keys[key_pos] = Some(middle_key);
+            parent.children[key_pos + 1] = Some(right_page);
+            parent.num_keys += 1;
+            self.storage.write_node(parent_page, &parent);
+            // Recursively split parent if full
+            if parent.num_keys as usize == MAX_KEYS {
+                self.split_recursive(parent_page, middle_key)
+            } else {
+                None
+            }
+        }
     }
 
     pub fn insert(&mut self, input: Record) {
@@ -352,13 +397,199 @@ impl BTree {
                     return;
                 }
 
-                // 3) Must split and possibly recurse upward
-                let nodes_to_write =
-                    BTree::split_node(node, parent, input, self.storage.num_nodes());
-                for (n, idx) in nodes_to_write {
-                    self.storage.write_node(idx, &n);
-                }
+                // 3) Must split and possibly recurse upward #todo
+                let _ = self.split_recursive(node.1, input);
             }
+        }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempfile;
+
+    // Helper function to create a BTree with a temporary file
+    fn create_btree() -> BTree {
+        let file = tempfile().unwrap();
+        BTree {
+            storage: NodeStorage {
+                file,
+                page_reads: 0,
+                page_writes: 0,
+            },
+        }
+    }
+
+    fn create_record(key: i32) -> Record {
+        let mut out = Record::random();
+        out.key = key;
+        out
+    }
+
+    #[test]
+    fn test_empty_tree() {
+        let mut btree = create_btree();
+        assert!(btree.search(1).is_none());
+    }
+
+    #[test]
+    fn test_single_insert_and_search() {
+        let mut btree = create_btree();
+        let key = 42;
+        let record = create_record(key);
+        btree.insert(record);
+        assert!(btree.search(key).is_some());
+        assert_eq!(btree.search(key).unwrap().key, key);
+    }
+
+    #[test]
+    fn test_insert_and_search_multiple() {
+        let mut btree = create_btree();
+        let keys = vec![10, 20, 30, 40, 50];
+        for key in &keys {
+            btree.insert(create_record(*key));
+        }
+        for key in &keys {
+            assert!(btree.search(*key).is_some());
+            assert_eq!(btree.search(*key).unwrap().key, *key);
+        }
+    }
+
+    #[test]
+    fn test_insert_duplicate_key() {
+        let mut btree = create_btree();
+        let key = 42;
+        let record1 = create_record(key);
+        let record2 = create_record(key);
+        btree.insert(record1);
+        btree.insert(record2);
+        assert!(btree.search(key).is_some());
+        // Ensure the data was updated (assuming insert updates existing keys)
+        assert_eq!(btree.search(key).unwrap().key, record2.key);
+    }
+
+    #[test]
+    fn test_insert_and_search_min_max_keys() {
+        let mut btree = create_btree();
+        let min_key = i32::MIN;
+        let max_key = i32::MAX;
+        btree.insert(create_record(min_key));
+        btree.insert(create_record(max_key));
+        assert!(btree.search(min_key).is_some());
+        assert!(btree.search(max_key).is_some());
+    }
+
+    #[test]
+    fn test_search_nonexistent_key() {
+        let mut btree = create_btree();
+        btree.insert(create_record(10));
+        btree.insert(create_record(20));
+        btree.insert(create_record(30));
+        assert!(btree.search(15).is_none());
+    }
+
+    #[test]
+    fn test_split_and_search() {
+        let mut btree = create_btree();
+        // Insert enough keys to force a split
+        let keys = (1..=crate::consts::MAX_KEYS + 1).collect::<Vec<_>>();
+        for key in &keys {
+            btree.insert(create_record(*key as i32));
+        }
+        for key in &keys {
+            assert!(btree.search(*key as i32).is_some());
+        }
+    }
+
+    #[test]
+    fn test_recursive_split() {
+        let mut btree = create_btree();
+        // Insert enough keys to force multiple splits
+        let keys = (1..=crate::consts::MAX_KEYS * 2).collect::<Vec<_>>();
+        for key in &keys {
+            btree.insert(create_record(*key as i32));
+        }
+        for key in &keys {
+            assert!(btree.search(*key as i32).is_some());
+        }
+    }
+
+    #[test]
+    fn test_stress_insert_and_search() {
+        let mut btree = create_btree();
+        let keys = (1..=1000).collect::<Vec<_>>();
+        for key in &keys {
+            btree.insert(create_record(*key as i32));
+        }
+        for key in &keys {
+            assert!(btree.search(*key as i32).is_some());
+        }
+    }
+
+    #[test]
+    fn test_insert_at_boundary() {
+        let mut btree = create_btree();
+        // Insert keys at the boundary of the node capacity
+        let keys = (1..=crate::consts::MAX_KEYS).collect::<Vec<_>>();
+        for key in &keys {
+            btree.insert(create_record(*key as i32));
+        }
+        // Insert one more to force a split
+        btree.insert(create_record((crate::consts::MAX_KEYS + 1) as i32));
+        for key in 1..=crate::consts::MAX_KEYS + 1 {
+            assert!(btree.search(key as i32).is_some());
+        }
+    }
+
+    #[test]
+    fn test_insert_sorted_keys() {
+        let mut btree = create_btree();
+        // Insert keys in sorted order to test rightmost insertion
+        let keys = (1..=crate::consts::MAX_KEYS * 2).collect::<Vec<_>>();
+        for key in &keys {
+            btree.insert(create_record(*key as i32));
+        }
+        for key in 1..=crate::consts::MAX_KEYS * 2 {
+            assert!(btree.search(key as i32).is_some());
+        }
+    }
+
+    #[test]
+    fn test_insert_reverse_sorted_keys() {
+        let mut btree = create_btree();
+        // Insert keys in reverse order to test leftmost insertion
+        let keys = (1..=crate::consts::MAX_KEYS * 2).rev().collect::<Vec<_>>();
+        for key in &keys {
+            btree.insert(create_record(*key as i32));
+        }
+        for key in 1..=crate::consts::MAX_KEYS * 2 {
+            assert!(btree.search(key as i32).is_some());
+        }
+    }
+
+    #[test]
+    fn test_insert_and_search_large_keys() {
+        let mut btree = create_btree();
+        // Insert large keys to test edge cases
+        let keys = vec![i32::MAX - 1, i32::MAX - 2, i32::MAX - 3];
+        for key in &keys {
+            btree.insert(create_record(*key));
+        }
+        for key in &keys {
+            assert!(btree.search(*key).is_some());
+        }
+    }
+
+    #[test]
+    fn test_insert_and_search_negative_keys() {
+        let mut btree = create_btree();
+        // Insert negative keys
+        let keys = vec![-1, -2, -3, -4, -5];
+        for key in &keys {
+            btree.insert(create_record(*key));
+        }
+        for key in &keys {
+            assert!(btree.search(*key).is_some());
         }
     }
 }

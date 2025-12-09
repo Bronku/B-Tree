@@ -4,30 +4,19 @@ mod node;
 mod node_storage;
 mod record;
 
-use crate::node::Node;
-use crate::node_storage::NodeStorage;
+use crate::btree::BTree;
 use crate::record::Record;
 
 fn main() {
-    let mut storage = NodeStorage::open("btree.idx");
-
-    let mut node = storage.read_node(1);
-    node.insert_non_full(Record {
+    let mut tree = BTree::new("btree.dat");
+    tree.insert(Record {
         key: 1,
-        a: [69, 0, 0, 0, 0],
+        a: [0, 0, 0, 0, 0],
         x: 0,
     });
 
-    println!("{:?}", node);
-
-    storage.write_node(1, &node);
-
-    let node1 = storage.read_node(1);
-
-    println!("{:?}", node1);
-
-    println!("Record = {} bytes", std::mem::size_of::<Record>());
-    println!("Node   = {} bytes", std::mem::size_of::<Node>());
+    let rec = tree.search(0);
+    println!("{:?}", rec);
 
     /*
     let mut btree = BTree::new();
