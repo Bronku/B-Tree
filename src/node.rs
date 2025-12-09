@@ -1,22 +1,35 @@
+use crate::consts::*;
 use crate::record::Record;
 
-const MIN_DEGREE: usize = 3; // Minimum degree (minimum children per node)
-
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Node {
-    pub keys: Vec<Record>,
-    pub children: Vec<Box<Node>>,
+    pub keys: [Option<Record>; MAX_KEYS],
+    pub children: [Option<usize>; MAX_KEYS + 1],
+    pub num_keys: usize,
     pub is_leaf: bool,
 }
 
 impl Node {
     pub fn new(is_leaf: bool) -> Self {
-        Node {
-            keys: Vec::new(),
-            children: Vec::new(),
+        Self {
+            keys: [(); MAX_KEYS].map(|_| None),
+            children: [(); MAX_KEYS + 1].map(|_| None),
+            num_keys: 0,
             is_leaf,
         }
     }
+
+    pub fn insert_non_full(&mut self, input: Record) -> bool {
+        let i = self.num_keys;
+        if i == MAX_KEYS {
+            return false;
+        }
+        self.keys[i] = Some(input);
+        self.num_keys += 1;
+        return true;
+    }
+
+    /*
 
     pub fn is_full(&self) -> bool {
         self.keys.len() >= 2 * MIN_DEGREE - 1
@@ -82,4 +95,5 @@ impl Node {
         self.keys.insert(i, median);
         self.children.insert(i + 1, new_child);
     }
+    */
 }

@@ -1,6 +1,36 @@
+use crate::Record;
 use crate::node::Node;
-use crate::record::Record;
+use crate::node_storage::NodeStorage;
 
+#[derive(Debug)]
+pub struct BTree {
+    storage: NodeStorage,
+    root: Node,
+}
+
+impl BTree {
+    pub fn new(filename: &str) -> Self {
+        let mut storage = NodeStorage::open(filename);
+        let root = if storage.num_nodes() > 0 {
+            storage.read_node(0)
+        } else {
+            Node::new(true)
+        };
+
+        BTree {
+            storage: storage,
+            root: root,
+        }
+    }
+
+    pub fn search(&self, key: i32) -> Option<Record> {
+        let mut current = 0;
+        let mut node = self.root;
+
+        None
+    }
+}
+/*
 #[derive(Debug)]
 pub struct BTree {
     root: Option<Box<Node>>,
@@ -61,3 +91,4 @@ impl BTree {
         }
     }
 }
+*/
