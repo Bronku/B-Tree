@@ -195,10 +195,8 @@ impl BTree {
         parent: Option<(Node, usize)>,
         input: Record,
     ) -> Option<Vec<(Node, usize)>> {
-        let parent_idx = parent?.1;
-        let parent = parent?.0;
-        let node_idx = node.1;
-        let node = node.0;
+        let (parent, parent_idx) = parent?;
+        let (node, node_idx) = node;
 
         let node_idx_in_parent = parent
             .children
@@ -243,6 +241,76 @@ impl BTree {
         None
     }
 
+    fn split_node(
+        node_tuple: (Node, usize),
+        parent: Option<(Node, usize)>,
+        input: Record,
+        next_node_idx: usize,
+    ) -> Vec<(Node, usize)> {
+        let (mut node, node_idx) = node_tuple;
+
+        // 1. Collect all keys (node + input)
+        let mut all_keys: Vec<Record> = (0..node.num_keys).filter_map(|i| node.keys[i]).collect();
+        all_keys.push(input);
+        all_keys.sort_by_key(|r| r.key);
+
+        // 2. Determine middle key
+        let mid_idx = all_keys.len() / 2;
+        let middle_key = all_keys[mid_idx];
+
+        // 3. Update left node with keys before middle
+        node.keys.fill(None);
+        for i in 0..mid_idx {
+            node.keys[i] = Some(all_keys[i]);
+        }
+        node.num_keys = mid_idx;
+
+        // 4. Create new right node
+        let mut right = Node::new(node.is_leaf);
+        for i in 0..(all_keys.len() - mid_idx - 1) {
+            right.keys[i] = Some(all_keys[mid_idx + 1 + i]);
+        }
+        right.num_keys = all_keys.len() - mid_idx - 1;
+        let right_idx = next_node_idx;
+
+        let mut result = vec![(node, node_idx), (right, right_idx)];
+
+        // 5. Update or create parent
+        match parent {
+            Some((mut par_node, par_idx)) => {
+                let mut insert_pos = 0;
+                while insert_pos < par_node.num_keys
+                    && par_node.keys[insert_pos].unwrap().key < middle_key.key
+                {
+                    insert_pos += 1;
+                }
+
+                for i in (insert_pos..par_node.num_keys).rev() {
+                    par_node.keys[i + 1] = par_node.keys[i];
+                    par_node.children[i + 2] = par_node.children[i + 1];
+                }
+
+                par_node.keys[insert_pos] = Some(middle_key);
+                par_node.children[insert_pos + 1] = Some(right_idx);
+                par_node.num_keys += 1;
+
+                result.push((par_node, par_idx));
+            }
+            None => {
+                let mut root = Node::new(false);
+                root.keys[0] = Some(middle_key);
+                root.num_keys = 1;
+                root.children[0] = Some(node_idx);
+                root.children[1] = Some(right_idx);
+
+                // Assign root index — usually 0 if creating from empty tree
+                result.push((root, 0));
+            }
+        }
+
+        result
+    }
+
     pub fn insert(&mut self, input: Record) {
         use FindResult::*;
 
@@ -270,9 +338,6 @@ impl BTree {
             }
 
             NotFound { node, parent } => {
-                // Main insertion flow
-                let key = input;
-
                 // 1) Try normal insertion
                 if let Some(updated_node) = BTree::try_insert_without_split(node.0, input) {
                     self.storage.write_node(node.1, &updated_node);
@@ -288,7 +353,8 @@ impl BTree {
                 }
 
                 // 3) Must split and possibly recurse upward
-                let nodes_to_write = BTree::split(node.0, parent, input);
+                let nodes_to_write =
+                    BTree::split_node(node, parent, input, self.storage.num_nodes());
                 for (n, idx) in nodes_to_write {
                     self.storage.write_node(idx, &n);
                 }
