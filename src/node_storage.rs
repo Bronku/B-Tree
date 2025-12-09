@@ -61,6 +61,14 @@ impl NodeStorage {
             }
         }
 
+        out.push('|');
+
+        // parent
+        match node.parent {
+            Some(p) => out.push_str(&p.to_string()),
+            None => out.push('.'),
+        }
+
         // Convert to fixed-size block
         let mut block = [b' '; PAGE_SIZE];
         let bytes = out.as_bytes();
@@ -93,6 +101,12 @@ impl NodeStorage {
                 }
             }
         }
+
+        node.parent = if parts.len() > 4 && parts[4] != "." {
+            Some(parts[4].parse().unwrap())
+        } else {
+            None
+        };
 
         node
     }
@@ -152,6 +166,8 @@ mod tests {
             node.children[i] = Some(rng.random_range(0..100));
         }
 
+        node.parent = Some(rng.random_range(0..200));
+
         node
     }
 
@@ -178,6 +194,7 @@ mod tests {
             assert_eq!(read_node.keys[i].unwrap().key, node.keys[i].unwrap().key);
         }
         assert_eq!(storage.page_reads, 1);
+        assert_eq!(read_node.parent, node.parent);
     }
 
     #[test]
@@ -201,6 +218,8 @@ mod tests {
         for i in 0..node2.num_keys {
             assert_eq!(read_node.keys[i].unwrap().key, node2.keys[i].unwrap().key);
         }
+
+        assert_eq!(read_node.parent, node2.parent);
 
         assert_eq!(storage.page_writes, 2);
         assert_eq!(storage.page_reads, 1);
@@ -231,6 +250,8 @@ mod tests {
         for i in 0..10 {
             let read_node = storage.read_node(i);
             let orig = &nodes[i];
+
+            assert_eq!(read_node.parent, orig.parent);
             assert_eq!(read_node.num_keys, orig.num_keys);
             for j in 0..orig.num_keys {
                 assert_eq!(read_node.keys[j].unwrap().key, orig.keys[j].unwrap().key);

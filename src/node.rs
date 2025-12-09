@@ -7,6 +7,7 @@ pub struct Node {
     pub children: [Option<usize>; MAX_KEYS + 1],
     pub num_keys: usize,
     pub is_leaf: bool,
+    pub parent: Option<usize>,
 }
 
 impl Node {
@@ -16,17 +17,8 @@ impl Node {
             children: [(); MAX_KEYS + 1].map(|_| None),
             num_keys: 0,
             is_leaf,
+            parent: None,
         }
-    }
-
-    pub fn insert_non_full(&mut self, input: Record) -> bool {
-        let i = self.num_keys;
-        if i == MAX_KEYS {
-            return false;
-        }
-        self.keys[i] = Some(input);
-        self.num_keys += 1;
-        return true;
     }
 
     /*
