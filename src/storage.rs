@@ -11,6 +11,12 @@ pub struct InMemoryStorage {
     pub nodes: Vec<Option<Node>>,
 }
 
+impl InMemoryStorage {
+    pub fn new() -> Self {
+        Self { nodes: Vec::new() }
+    }
+}
+
 impl Storage for InMemoryStorage {
     fn read_node(&self, loc: usize) -> Option<Node> {
         self.nodes.get(loc)?.clone()

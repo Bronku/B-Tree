@@ -6,7 +6,7 @@ use crate::btree::BPlusTree;
 use crate::storage::InMemoryStorage;
 
 fn main() {
-    let storage = InMemoryStorage { nodes: Vec::new() };
+    let storage = InMemoryStorage::new();
     let mut tree = BPlusTree::open(storage);
 
     // Insert some key-value pairs
