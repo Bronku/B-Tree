@@ -1,6 +1,3 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct ValueType([u32; 2]); // Example implementation
-
 type Value = u64;
 
 const MAX_KEYS: usize = 4;
@@ -13,14 +10,14 @@ enum Node {
 
 #[derive(Debug, Clone)]
 struct LeafNode {
-    keys: Vec<ValueType>,
+    keys: Vec<i32>,
     values: Vec<Value>,
     next: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
 struct InternalNode {
-    keys: Vec<ValueType>,
+    keys: Vec<i32>,
     children: Vec<usize>,
 }
 
@@ -53,7 +50,7 @@ where
         }
     }
 
-    pub fn find(&self, key: ValueType) -> Option<Value> {
+    pub fn find(&self, key: i32) -> Option<Value> {
         let mut current_loc = self.root_loc;
         loop {
             let node = self.storage.read_node(current_loc)?;
@@ -77,7 +74,7 @@ where
         }
     }
 
-    pub fn insert(&mut self, key: ValueType, value: Value) {
+    pub fn insert(&mut self, key: i32, value: Value) {
         let mut path = Vec::new();
         let mut current_loc = self.root_loc;
         let mut current_node = self.storage.read_node(current_loc).unwrap();
@@ -161,7 +158,7 @@ where
 
     fn insert_into_parent(
         &mut self,
-        key: ValueType,
+        key: i32,
         new_child_loc: usize,
         path: &mut Vec<(usize, InternalNode)>,
     ) {
@@ -249,10 +246,10 @@ fn main() {
     let mut tree = BPlusTree::open(storage);
 
     // Insert some key-value pairs
-    tree.insert(ValueType([1, 2]), 100);
-    tree.insert(ValueType([3, 4]), 200);
+    tree.insert(1, 100);
+    tree.insert(2, 200);
 
     // Find a key
-    let value = tree.find(ValueType([1, 2]));
+    let value = tree.find(2);
     println!("Found value: {:?}", value);
 }
