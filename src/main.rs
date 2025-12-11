@@ -1,4 +1,5 @@
 mod btree;
+mod config;
 mod node;
 mod record;
 mod storage;

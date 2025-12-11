@@ -13,12 +13,7 @@ where
     S: Storage,
 {
     pub fn open(mut storage: S) -> Self {
-        // Initialize with an empty root node (leaf)
-        let root = Node::Leaf(LeafNode {
-            keys: Vec::new(),
-            values: Vec::new(),
-            next: None,
-        });
+        let root = Node::Leaf(LeafNode::new());
         storage.write_node(0, &root);
         BPlusTree {
             storage,
@@ -55,7 +50,6 @@ where
         let mut current_loc = self.root_loc;
         let mut current_node = self.storage.read_node(current_loc).unwrap();
 
-        // Traverse to the leaf node, recording the path
         while let Node::Internal(internal) = current_node {
             path.push((current_loc, internal.clone()));
             let mut i = 0;
@@ -87,11 +81,9 @@ where
                 leaf.values.push(value);
             }
 
-            // Write the updated leaf back to storage
             self.storage
                 .write_node(current_loc, &Node::Leaf(leaf.clone()));
 
-            // Check if the leaf needs to be split
             if leaf.keys.len() > MAX_KEYS {
                 self.split_leaf(current_loc, leaf, &mut path);
             }
