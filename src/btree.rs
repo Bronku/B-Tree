@@ -45,7 +45,8 @@ where
         }
     }
 
-    pub fn insert(&mut self, key: i32, value: Record) {
+    pub fn insert(&mut self, value: Record) {
+        let key = value[0];
         let mut path = Vec::new();
         let mut current_loc = self.root_loc;
         let mut current_node = self.storage.read_node(current_loc).unwrap();
@@ -194,19 +195,19 @@ mod tests {
     use crate::storage::InMemoryStorage;
 
     // Helper function to generate a large number of keys and values
-    fn generate_large_dataset(size: usize) -> (Vec<i32>, Vec<Record>) {
+    fn generate_large_dataset(size: usize) -> Vec<Record> {
         let keys: Vec<i32> = (1..=size as i32).collect();
-        let values: Vec<Record> = keys.iter().map(|&k| [k; 6]).collect();
-        (keys, values)
+        let values: Vec<Record> = keys.iter().map(|&k| [k; 7]).collect();
+        values
     }
 
     // Helper function to generate random keys and values
-    fn generate_random_dataset(size: usize) -> (Vec<i32>, Vec<Record>) {
+    fn generate_random_dataset(size: usize) -> Vec<Record> {
         use rand::Rng;
         let mut rng = rand::rng();
         let keys: Vec<i32> = (0..size).map(|_| rng.random_range(1..10000)).collect();
-        let values: Vec<Record> = keys.iter().map(|&k| [k; 6]).collect();
-        (keys, values)
+        let values: Vec<Record> = keys.iter().map(|&k| [k; 7]).collect();
+        values
     }
 
     #[test]
@@ -220,50 +221,27 @@ mod tests {
     fn test_insert_and_find() {
         let storage = InMemoryStorage::new();
         let mut tree = BPlusTree::open(storage);
-        let key = 1;
-        let value = [1, 2, 3, 4, 5, 6]; // Example Record as [i32; 6]
-        tree.insert(key, value);
-        assert_eq!(tree.find(key), Some(value));
+        let value = [1, 1, 2, 3, 4, 5, 6]; // Example Record as [i32; 6]
+        tree.insert(value);
+        assert_eq!(tree.find(value[0]), Some(value));
     }
 
     #[test]
     fn test_multiple_inserts_and_finds() {
         let storage = InMemoryStorage::new();
         let mut tree = BPlusTree::open(storage);
-        let keys = [1, 2, 3, 4, 5];
         let values = [
-            [1, 2, 3, 4, 5, 6],
-            [7, 8, 9, 10, 11, 12],
-            [13, 14, 15, 16, 17, 18],
-            [19, 20, 21, 22, 23, 24],
-            [25, 26, 27, 28, 29, 30],
+            [1, 1, 2, 3, 4, 5, 6],
+            [2, 7, 8, 9, 10, 11, 12],
+            [3, 13, 14, 15, 16, 17, 18],
+            [4, 19, 20, 21, 22, 23, 24],
+            [5, 25, 26, 27, 28, 29, 30],
         ];
-        for (i, key) in keys.iter().enumerate() {
-            tree.insert(*key, values[i]);
+        for rec in values {
+            tree.insert(rec);
         }
-        for (i, key) in keys.iter().enumerate() {
-            assert_eq!(tree.find(*key), Some(values[i]));
-        }
-    }
-
-    #[test]
-    fn test_leaf_split() {
-        let storage = InMemoryStorage::new();
-        let mut tree = BPlusTree::open(storage);
-        let keys = [1, 2, 3, 4, 5]; // Assuming MAX_KEYS is 4, this will trigger a split
-        let values = [
-            [1, 2, 3, 4, 5, 6],
-            [7, 8, 9, 10, 11, 12],
-            [13, 14, 15, 16, 17, 18],
-            [19, 20, 21, 22, 23, 24],
-            [25, 26, 27, 28, 29, 30],
-        ];
-        for (i, key) in keys.iter().enumerate() {
-            tree.insert(*key, values[i]);
-        }
-        // Verify that all keys can still be found after splits
-        for (i, key) in keys.iter().enumerate() {
-            assert_eq!(tree.find(*key), Some(values[i]));
+        for rec in values {
+            assert_eq!(tree.find(rec[0]), Some(rec));
         }
     }
 
@@ -271,27 +249,24 @@ mod tests {
     fn test_internal_split() {
         let storage = InMemoryStorage::new();
         let mut tree = BPlusTree::open(storage);
-        // Insert enough keys to trigger internal splits
-        let keys = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let values = [
-            [1, 2, 3, 4, 5, 6],
-            [7, 8, 9, 10, 11, 12],
-            [13, 14, 15, 16, 17, 18],
-            [19, 20, 21, 22, 23, 24],
-            [25, 26, 27, 28, 29, 30],
-            [31, 32, 33, 34, 35, 36],
-            [37, 38, 39, 40, 41, 42],
-            [43, 44, 45, 46, 47, 48],
-            [49, 50, 51, 52, 53, 54],
-            [55, 56, 57, 58, 59, 60],
-            [61, 62, 63, 64, 65, 66],
+            [1, 1, 2, 3, 4, 5, 6],
+            [2, 7, 8, 9, 10, 11, 12],
+            [3, 13, 14, 15, 16, 17, 18],
+            [4, 19, 20, 21, 22, 23, 24],
+            [5, 25, 26, 27, 28, 29, 30],
+            [6, 31, 32, 33, 34, 35, 36],
+            [7, 37, 38, 39, 40, 41, 42],
+            [8, 43, 44, 45, 46, 47, 48],
+            [9, 49, 50, 51, 52, 53, 54],
+            [10, 55, 56, 57, 58, 59, 60],
+            [11, 61, 62, 63, 64, 65, 66],
         ];
-        for (i, key) in keys.iter().enumerate() {
-            tree.insert(*key, values[i]);
+        for rec in values {
+            tree.insert(rec);
         }
-        // Verify that all keys can still be found after splits
-        for (i, key) in keys.iter().enumerate() {
-            assert_eq!(tree.find(*key), Some(values[i]));
+        for rec in values {
+            assert_eq!(tree.find(rec[0]), Some(rec));
         }
     }
 
@@ -300,11 +275,11 @@ mod tests {
         let storage = InMemoryStorage::new();
         let mut tree = BPlusTree::open(storage);
         let key = 1;
-        let initial_value = [1, 2, 3, 4, 5, 6];
-        let updated_value = [7, 8, 9, 10, 11, 12];
-        tree.insert(key, initial_value);
+        let initial_value = [key, 1, 2, 3, 4, 5, 6];
+        let updated_value = [key, 7, 8, 9, 10, 11, 12];
+        tree.insert(initial_value);
         assert_eq!(tree.find(key), Some(initial_value));
-        tree.insert(key, updated_value);
+        tree.insert(updated_value);
         assert_eq!(tree.find(key), Some(updated_value));
     }
 
@@ -319,20 +294,18 @@ mod tests {
     fn test_out_of_order_inserts() {
         let storage = InMemoryStorage::new();
         let mut tree = BPlusTree::open(storage);
-        let keys = [5, 3, 1, 4, 2];
         let values = [
-            [1, 2, 3, 4, 5, 6],
-            [7, 8, 9, 10, 11, 12],
-            [13, 14, 15, 16, 17, 18],
-            [19, 20, 21, 22, 23, 24],
-            [25, 26, 27, 28, 29, 30],
+            [5, 1, 2, 3, 4, 5, 6],
+            [3, 7, 8, 9, 10, 11, 12],
+            [1, 13, 14, 15, 16, 17, 18],
+            [4, 19, 20, 21, 22, 23, 24],
+            [2, 25, 26, 27, 28, 29, 30],
         ];
-        for (i, key) in keys.iter().enumerate() {
-            tree.insert(*key, values[i]);
+        for rec in values {
+            tree.insert(rec);
         }
-        // Verify that all keys can be found
-        for (i, key) in keys.iter().enumerate() {
-            assert_eq!(tree.find(*key), Some(values[i]));
+        for rec in values {
+            assert_eq!(tree.find(rec[0]), Some(rec));
         }
     }
 
@@ -340,65 +313,13 @@ mod tests {
     fn test_large_number_of_inserts() {
         let storage = InMemoryStorage::new();
         let mut tree = BPlusTree::open(storage);
-        let num_keys = 100;
-        let keys: Vec<i32> = (1..=num_keys).collect();
-        let values: Vec<Record> = (1..=num_keys)
-            .map(|i| [i, i + 1, i + 2, i + 3, i + 4, i + 5])
-            .collect();
-        for (i, key) in keys.iter().enumerate() {
-            tree.insert(*key, values[i]);
+        let num_keys = 100000;
+        let values = generate_large_dataset(num_keys);
+        for rec in &values {
+            tree.insert(*rec);
         }
-        // Verify that all keys can be found
-        for (i, key) in keys.iter().enumerate() {
-            assert_eq!(tree.find(*key), Some(values[i]));
-        }
-    }
-
-    #[test]
-    fn test_duplicate_keys() {
-        let storage = InMemoryStorage::new();
-        let mut tree = BPlusTree::open(storage);
-        let key = 1;
-        let initial_value = [1, 2, 3, 4, 5, 6];
-        let updated_value = [7, 8, 9, 10, 11, 12];
-        tree.insert(key, initial_value);
-        assert_eq!(tree.find(key), Some(initial_value));
-        tree.insert(key, updated_value);
-        assert_eq!(tree.find(key), Some(updated_value));
-    }
-
-    #[test]
-    fn test_recursive_splitting_up_to_root() {
-        let storage = InMemoryStorage::new();
-        let mut tree = BPlusTree::open(storage);
-
-        // Insert enough keys to cause multiple splits, including root split
-        let keys = (1..=20).collect::<Vec<i32>>();
-        let values: Vec<Record> = keys.iter().map(|&k| [k; 6]).collect();
-
-        for (i, key) in keys.iter().enumerate() {
-            tree.insert(*key, values[i]);
-        }
-
-        // Verify all keys are present
-        for (i, key) in keys.iter().enumerate() {
-            assert_eq!(tree.find(*key), Some(values[i]));
-        }
-    }
-
-    #[test]
-    fn test_large_dataset() {
-        let storage = InMemoryStorage::new();
-        let mut tree = BPlusTree::open(storage);
-        let (keys, values) = generate_large_dataset(10000);
-
-        for (i, key) in keys.iter().enumerate() {
-            tree.insert(*key, values[i]);
-        }
-
-        // Verify all keys are present
-        for (i, key) in keys.iter().enumerate() {
-            assert_eq!(tree.find(*key), Some(values[i]));
+        for rec in &values {
+            assert_eq!(tree.find(rec[0]), Some(*rec));
         }
     }
 
@@ -407,67 +328,27 @@ mod tests {
         let storage = InMemoryStorage::new();
         let mut tree = BPlusTree::open(storage);
 
-        // Test with minimum and maximum i32 values
-        let min_key = i32::MIN;
-        let max_key = i32::MAX;
-        let min_value = [i32::MIN; 6];
-        let max_value = [i32::MAX; 6];
+        let min_value = [i32::MIN; 7];
+        let max_value = [i32::MAX; 7];
 
-        tree.insert(min_key, min_value);
-        tree.insert(max_key, max_value);
+        tree.insert(min_value);
+        tree.insert(max_value);
 
-        assert_eq!(tree.find(min_key), Some(min_value));
-        assert_eq!(tree.find(max_key), Some(max_value));
-    }
-
-    #[test]
-    fn test_sequential_insertions() {
-        let storage = InMemoryStorage::new();
-        let mut tree = BPlusTree::open(storage);
-        let (keys, values) = generate_large_dataset(100);
-
-        for (i, key) in keys.iter().enumerate() {
-            tree.insert(*key, values[i]);
-        }
-
-        // Verify all keys are present
-        for (i, key) in keys.iter().enumerate() {
-            assert_eq!(tree.find(*key), Some(values[i]));
-        }
+        assert_eq!(tree.find(min_value[0]), Some(min_value));
+        assert_eq!(tree.find(max_value[0]), Some(max_value));
     }
 
     #[test]
     fn test_random_insertions() {
         let storage = InMemoryStorage::new();
         let mut tree = BPlusTree::open(storage);
-        let (keys, values) = generate_random_dataset(100);
+        let values = generate_random_dataset(10000);
 
-        for (i, key) in keys.iter().enumerate() {
-            tree.insert(*key, values[i]);
+        for rec in &values {
+            tree.insert(*rec);
         }
-
-        // Verify all keys are present
-        for (i, key) in keys.iter().enumerate() {
-            assert_eq!(tree.find(*key), Some(values[i]));
-        }
-    }
-
-    #[test]
-    fn test_node_splitting_and_balance() {
-        let storage = InMemoryStorage::new();
-        let mut tree = BPlusTree::open(storage);
-
-        // Insert keys that will cause multiple splits
-        let keys = (1..=50).collect::<Vec<i32>>();
-        let values: Vec<Record> = keys.iter().map(|&k| [k; 6]).collect();
-
-        for (i, key) in keys.iter().enumerate() {
-            tree.insert(*key, values[i]);
-        }
-
-        // Verify all keys are present and tree is balanced
-        for (i, key) in keys.iter().enumerate() {
-            assert_eq!(tree.find(*key), Some(values[i]));
+        for rec in &values {
+            assert_eq!(tree.find(rec[0]), Some(*rec));
         }
     }
 }

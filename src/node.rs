@@ -29,5 +29,3 @@ pub struct InternalNode {
     pub keys: Vec<i32>,
     pub children: Vec<usize>,
 }
-
-
