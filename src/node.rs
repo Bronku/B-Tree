@@ -12,7 +12,7 @@ pub enum Node {
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq)]
 pub struct HeaderNode {
-    pub root: i32,
+    pub root: usize,
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq)]

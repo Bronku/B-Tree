@@ -5,7 +5,7 @@ use crate::storage::Storage;
 
 pub struct BPlusTree<S> {
     storage: S,
-    root_loc: usize,
+    header: HeaderNode,
 }
 
 impl<S> BPlusTree<S>
@@ -13,16 +13,25 @@ where
     S: Storage,
 {
     pub fn open(mut storage: S) -> Self {
-        let root = Node::Leaf(LeafNode::new());
-        storage.write_node(0, &root);
+        let header: HeaderNode = if storage.total_nodes() == 0 {
+            let header = HeaderNode { root: 1 };
+            storage.write_node(0, &Node::Header(header.clone()));
+            storage.write_node(1, &Node::Leaf(LeafNode::new()));
+            header
+        } else {
+            match storage.read_node(0).unwrap() {
+                Node::Header(n) => n,
+                _ => panic!("first node must be header"),
+            }
+        };
         BPlusTree {
             storage,
-            root_loc: 0,
+            header: header,
         }
     }
 
     pub fn find(&mut self, key: i32) -> Option<Record> {
-        let mut current_loc = self.root_loc;
+        let mut current_loc = self.header.root;
         loop {
             let node = self.storage.read_node(current_loc)?;
             match node {
@@ -51,7 +60,7 @@ where
     pub fn insert(&mut self, value: Record) {
         let key = value[0];
         let mut path = Vec::new();
-        let mut current_loc = self.root_loc;
+        let mut current_loc = self.header.root;
         let mut current_node = self.storage.read_node(current_loc).unwrap();
 
         while let Node::Internal(internal) = current_node {
@@ -122,7 +131,9 @@ where
             });
             let new_root_loc = self.storage.total_nodes();
             self.storage.write_node(new_root_loc, &new_root);
-            self.root_loc = new_root_loc;
+            self.header.root = new_root_loc;
+            self.storage
+                .write_node(0, &Node::Header(self.header.clone()));
         } else {
             self.insert_into_parent(new_key, new_leaf_loc, path);
         }
@@ -184,7 +195,9 @@ where
             });
             let new_root_loc = self.storage.total_nodes();
             self.storage.write_node(new_root_loc, &new_root);
-            self.root_loc = new_root_loc;
+            self.header.root = new_root_loc;
+            self.storage
+                .write_node(0, &Node::Header(self.header.clone()));
         } else {
             self.insert_into_parent(new_key, new_internal_loc, path);
         }
