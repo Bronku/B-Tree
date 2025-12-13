@@ -69,7 +69,6 @@ impl FileStorage {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
     use crate::{
         config::MAX_KEYS,

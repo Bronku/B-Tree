@@ -7,6 +7,12 @@ use crate::record::Record;
 pub enum Node {
     Leaf(LeafNode),
     Internal(InternalNode),
+    Header(HeaderNode),
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq)]
+pub struct HeaderNode {
+    pub root: i32,
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq)]

@@ -41,6 +41,9 @@ where
                     }
                     return None;
                 }
+                Node::Header(_) => {
+                    panic!("What happened?")
+                }
             }
         }
     }
@@ -190,11 +193,13 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::file_storage::FileStorage;
+
     use super::*;
-    use crate::storage::InMemoryStorage;
 
     use proptest::prelude::*;
     use proptest::proptest;
+    use tempfile::NamedTempFile;
 
     use std::collections::BTreeMap;
 
@@ -224,6 +229,11 @@ mod tests {
         prop::collection::vec(arb_op(), 1..500)
     }
 
+    fn temp_storage() -> FileStorage {
+        let file = NamedTempFile::new().unwrap();
+        FileStorage::new(file.path().to_str().unwrap())
+    }
+
     proptest! {
         #![proptest_config(ProptestConfig {
             cases: 200,
@@ -232,7 +242,7 @@ mod tests {
 
         #[test]
         fn prop_bplustree_matches_btreemap(ops in arb_ops()) {
-            let storage = InMemoryStorage::new();
+            let storage = temp_storage();
             let mut tree = BPlusTree::open(storage);
 
             let mut model = BTreeMap::<i32, Record>::new();
@@ -258,7 +268,7 @@ mod tests {
     proptest! {
         #[test]
         fn prop_all_inserted_keys_are_findable(records in prop::collection::vec(arb_record(), 0..1000)) {
-            let storage = InMemoryStorage::new();
+            let storage = temp_storage();
             let mut tree = BPlusTree::open(storage);
             let mut model = BTreeMap::<i32, Record>::new();
 
@@ -275,7 +285,7 @@ mod tests {
 
     #[test]
     fn sanity_single_insert() {
-        let storage = InMemoryStorage::new();
+        let storage = temp_storage();
         let mut tree = BPlusTree::open(storage);
 
         let rec = [42, 1, 2, 3, 4, 5, 6];
@@ -287,7 +297,7 @@ mod tests {
 
     #[test]
     fn sanity_update_overwrites_value() {
-        let storage = InMemoryStorage::new();
+        let storage = temp_storage();
         let mut tree = BPlusTree::open(storage);
 
         let r1 = [1, 1, 1, 1, 1, 1, 1];
