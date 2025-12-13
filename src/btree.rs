@@ -202,6 +202,30 @@ where
             self.insert_into_parent(new_key, new_internal_loc, path);
         }
     }
+
+    pub fn dump_tree(&mut self) {
+        self.dump_node(self.header.root, 0);
+    }
+
+    fn dump_node(&mut self, loc: usize, depth: usize) {
+        let indent = "  ".repeat(depth);
+
+        match self.storage.read_node(loc) {
+            Some(Node::Leaf(leaf)) => {
+                println!("{}Leaf [{}] keys={:?}", indent, loc, leaf.keys);
+            }
+            Some(Node::Internal(internal)) => {
+                println!("{}Internal [{}] keys={:?}", indent, loc, internal.keys);
+
+                for &child in &internal.children {
+                    self.dump_node(child, depth + 1);
+                }
+            }
+            _ => {
+                println!("{}<invalid node @{}>", indent, loc);
+            }
+        }
+    }
 }
 
 #[cfg(test)]

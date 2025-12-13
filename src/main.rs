@@ -46,7 +46,8 @@ fn repl(tree: &mut BPlusTree<FileStorage>) {
             break;
         }
 
-        if input == "help" {
+        if input == "tree" {
+            tree.dump_tree();
             continue;
         }
 
