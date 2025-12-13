@@ -4,7 +4,7 @@ use crate::record::Record;
 use crate::storage::Storage;
 
 pub struct BPlusTree<S> {
-    storage: S,
+    pub storage: S,
     header: HeaderNode,
 }
 

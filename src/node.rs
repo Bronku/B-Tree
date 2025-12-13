@@ -18,7 +18,7 @@ pub struct HeaderNode {
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq)]
 pub struct LeafNode {
     pub keys: Vec<i32>,
-    pub values: Vec<Record>,
+    pub values: Vec<Option<Record>>,
     pub next: Option<usize>,
 }
 

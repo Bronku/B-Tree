@@ -56,6 +56,11 @@ fn repl(tree: &mut BPlusTree<FileStorage>) {
             continue;
         }
 
+        if input == "nodes" {
+            tree.storage.dump_pages();
+            continue;
+        }
+
         match handle_command(tree, input) {
             Ok(()) => {}
             Err(err) => println!("Error: {}", err),

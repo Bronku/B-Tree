@@ -27,6 +27,38 @@ impl FileStorage {
             page_writes: 0,
         }
     }
+
+    pub fn dump_pages(&mut self) {
+        let total = self.total_nodes();
+        for loc in 0..total {
+            print!("Page {}: ", loc);
+
+            match self.read_node(loc) {
+                Some(Node::Header(header)) => {
+                    println!("Header, root: {:?}", header.root)
+                }
+                Some(Node::Leaf(leaf)) => {
+                    println!(
+                        "Leaf keys={:?} values={} next={:?}",
+                        leaf.keys,
+                        leaf.values.len(),
+                        leaf.next
+                    );
+                }
+                Some(Node::Internal(internal)) => {
+                    println!(
+                        "Internal keys={:?} children={:?}",
+                        internal.keys, internal.children
+                    );
+                }
+                None => {
+                    println!("<empty or invalid>");
+                }
+            }
+
+            self.page_reads -= 1;
+        }
+    }
 }
 
 impl Storage for FileStorage {
