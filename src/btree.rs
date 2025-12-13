@@ -45,7 +45,7 @@ where
                 Node::Leaf(leaf) => {
                     for (i, k) in leaf.keys.iter().enumerate() {
                         if *k == key {
-                            return Some(leaf.values[i]);
+                            return leaf.values[i];
                         }
                     }
                     return None;
@@ -79,19 +79,18 @@ where
             let mut inserted = false;
             for (i, k) in leaf.keys.iter_mut().enumerate() {
                 if *k == key {
-                    leaf.values[i] = value;
+                    leaf.values[i] = Some(value);
                     inserted = true;
                     break;
                 } else if key < *k {
                     leaf.keys.insert(i, key);
-                    leaf.values.insert(i, value);
+                    leaf.values.insert(i, Some(value));
                     inserted = true;
-                    break;
-                }
+                    break;                }
             }
             if !inserted {
                 leaf.keys.push(key);
-                leaf.values.push(value);
+                leaf.values.push(Some(value));
             }
 
             self.storage
@@ -102,6 +101,8 @@ where
             }
         }
     }
+
+    pub fn delete
 
     fn split_leaf(&mut self, loc: usize, leaf: LeafNode, path: &mut Vec<(usize, InternalNode)>) {
         let mid = leaf.keys.len() / 2;

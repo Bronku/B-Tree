@@ -118,7 +118,7 @@ mod tests {
     fn sample_leaf() -> Node {
         Node::Leaf(LeafNode {
             keys: vec![1, 2, 3],
-            values: vec![[1; 7], [2; 7], [3; 7]],
+            values: vec![Some([1; 7]), Some([2; 7]), Some([3; 7])],
             next: Some(42),
         })
     }
@@ -198,7 +198,7 @@ mod tests {
         prop_oneof![
             (
                 prop::collection::vec(any::<i32>(), 0..=max),
-                prop::collection::vec(arb_record(), 0..=max),
+                prop::collection::vec(proptest::option::of(arb_record()), 0..=max),
                 proptest::option::of(any::<usize>()),
             )
                 .prop_map(|(keys, values, next)| { Node::Leaf(LeafNode { keys, values, next }) }),
