@@ -1,7 +1,7 @@
+use crate::config::MAX_KEYS;
 use crate::node::*;
 use crate::record::Record;
 use crate::storage::Storage;
-const MAX_KEYS: usize = 4;
 
 pub struct BPlusTree<S> {
     storage: S,
