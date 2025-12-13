@@ -191,164 +191,111 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::record::Record;
     use crate::storage::InMemoryStorage;
 
-    // Helper function to generate a large number of keys and values
-    fn generate_large_dataset(size: usize) -> Vec<Record> {
-        let keys: Vec<i32> = (1..=size as i32).collect();
-        let values: Vec<Record> = keys.iter().map(|&k| [k; 7]).collect();
-        values
+    use proptest::prelude::*;
+    use proptest::proptest;
+
+    use std::collections::BTreeMap;
+
+    fn arb_record() -> impl Strategy<Value = Record> {
+        prop::array::uniform7(any::<i32>())
     }
 
-    // Helper function to generate random keys and values
-    fn generate_random_dataset(size: usize) -> Vec<Record> {
-        use rand::Rng;
-        let mut rng = rand::rng();
-        let keys: Vec<i32> = (0..size).map(|_| rng.random_range(1..10000)).collect();
-        let values: Vec<Record> = keys.iter().map(|&k| [k; 7]).collect();
-        values
+    fn arb_key() -> impl Strategy<Value = i32> {
+        any::<i32>()
     }
 
-    #[test]
-    fn test_initialization() {
-        let storage = InMemoryStorage::new();
-        let tree = BPlusTree::open(storage);
-        assert_eq!(tree.root_loc, 0);
+    #[derive(Debug, Clone)]
+    enum Op {
+        Insert(Record),
+        Find(i32),
     }
 
-    #[test]
-    fn test_insert_and_find() {
-        let storage = InMemoryStorage::new();
-        let mut tree = BPlusTree::open(storage);
-        let value = [1, 1, 2, 3, 4, 5, 6]; // Example Record as [i32; 6]
-        tree.insert(value);
-        assert_eq!(tree.find(value[0]), Some(value));
+    fn arb_op() -> impl Strategy<Value = Op> {
+        prop_oneof![
+            arb_record().prop_map(Op::Insert),
+            arb_key().prop_map(Op::Find),
+        ]
     }
 
-    #[test]
-    fn test_multiple_inserts_and_finds() {
-        let storage = InMemoryStorage::new();
-        let mut tree = BPlusTree::open(storage);
-        let values = [
-            [1, 1, 2, 3, 4, 5, 6],
-            [2, 7, 8, 9, 10, 11, 12],
-            [3, 13, 14, 15, 16, 17, 18],
-            [4, 19, 20, 21, 22, 23, 24],
-            [5, 25, 26, 27, 28, 29, 30],
-        ];
-        for rec in values {
-            tree.insert(rec);
-        }
-        for rec in values {
-            assert_eq!(tree.find(rec[0]), Some(rec));
-        }
+    fn arb_ops() -> impl Strategy<Value = Vec<Op>> {
+        // Long enough to trigger many splits, but still fast
+        prop::collection::vec(arb_op(), 1..500)
     }
 
-    #[test]
-    fn test_internal_split() {
-        let storage = InMemoryStorage::new();
-        let mut tree = BPlusTree::open(storage);
-        let values = [
-            [1, 1, 2, 3, 4, 5, 6],
-            [2, 7, 8, 9, 10, 11, 12],
-            [3, 13, 14, 15, 16, 17, 18],
-            [4, 19, 20, 21, 22, 23, 24],
-            [5, 25, 26, 27, 28, 29, 30],
-            [6, 31, 32, 33, 34, 35, 36],
-            [7, 37, 38, 39, 40, 41, 42],
-            [8, 43, 44, 45, 46, 47, 48],
-            [9, 49, 50, 51, 52, 53, 54],
-            [10, 55, 56, 57, 58, 59, 60],
-            [11, 61, 62, 63, 64, 65, 66],
-        ];
-        for rec in values {
-            tree.insert(rec);
-        }
-        for rec in values {
-            assert_eq!(tree.find(rec[0]), Some(rec));
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 200,
+            .. ProptestConfig::default()
+        })]
+
+        #[test]
+        fn prop_bplustree_matches_btreemap(ops in arb_ops()) {
+            let storage = InMemoryStorage::new();
+            let mut tree = BPlusTree::open(storage);
+
+            let mut model = BTreeMap::<i32, Record>::new();
+
+            for op in ops {
+                match op {
+                    Op::Insert(record) => {
+                        let key = record[0];
+                        tree.insert(record);
+                        model.insert(key, record);
+                    }
+
+                    Op::Find(key) => {
+                        let tree_res = tree.find(key);
+                        let model_res = model.get(&key).copied();
+                        prop_assert_eq!(tree_res, model_res);
+                    }
+                }
+            }
         }
     }
 
-    #[test]
-    fn test_update() {
-        let storage = InMemoryStorage::new();
-        let mut tree = BPlusTree::open(storage);
-        let key = 1;
-        let initial_value = [key, 1, 2, 3, 4, 5, 6];
-        let updated_value = [key, 7, 8, 9, 10, 11, 12];
-        tree.insert(initial_value);
-        assert_eq!(tree.find(key), Some(initial_value));
-        tree.insert(updated_value);
-        assert_eq!(tree.find(key), Some(updated_value));
-    }
+    proptest! {
+        #[test]
+        fn prop_all_inserted_keys_are_findable(records in prop::collection::vec(arb_record(), 0..1000)) {
+            let storage = InMemoryStorage::new();
+            let mut tree = BPlusTree::open(storage);
+            let mut model = BTreeMap::<i32, Record>::new();
 
-    #[test]
-    fn test_non_existent_key() {
-        let storage = InMemoryStorage::new();
-        let mut tree = BPlusTree::open(storage);
-        assert_eq!(tree.find(999), None); // Assuming 999 is not in the tree
-    }
+            for rec in records {
+                tree.insert(rec);
+                model.insert(rec[0], rec);
+            }
 
-    #[test]
-    fn test_out_of_order_inserts() {
-        let storage = InMemoryStorage::new();
-        let mut tree = BPlusTree::open(storage);
-        let values = [
-            [5, 1, 2, 3, 4, 5, 6],
-            [3, 7, 8, 9, 10, 11, 12],
-            [1, 13, 14, 15, 16, 17, 18],
-            [4, 19, 20, 21, 22, 23, 24],
-            [2, 25, 26, 27, 28, 29, 30],
-        ];
-        for rec in values {
-            tree.insert(rec);
-        }
-        for rec in values {
-            assert_eq!(tree.find(rec[0]), Some(rec));
+            for (key, value) in model {
+                prop_assert_eq!(tree.find(key), Some(value));
+            }
         }
     }
 
     #[test]
-    fn test_large_number_of_inserts() {
-        let storage = InMemoryStorage::new();
-        let mut tree = BPlusTree::open(storage);
-        let num_keys = 100000;
-        let values = generate_large_dataset(num_keys);
-        for rec in &values {
-            tree.insert(*rec);
-        }
-        for rec in &values {
-            assert_eq!(tree.find(rec[0]), Some(*rec));
-        }
-    }
-
-    #[test]
-    fn test_boundary_values() {
+    fn sanity_single_insert() {
         let storage = InMemoryStorage::new();
         let mut tree = BPlusTree::open(storage);
 
-        let min_value = [i32::MIN; 7];
-        let max_value = [i32::MAX; 7];
+        let rec = [42, 1, 2, 3, 4, 5, 6];
+        tree.insert(rec);
 
-        tree.insert(min_value);
-        tree.insert(max_value);
-
-        assert_eq!(tree.find(min_value[0]), Some(min_value));
-        assert_eq!(tree.find(max_value[0]), Some(max_value));
+        assert_eq!(tree.find(42), Some(rec));
+        assert_eq!(tree.find(7), None);
     }
 
     #[test]
-    fn test_random_insertions() {
+    fn sanity_update_overwrites_value() {
         let storage = InMemoryStorage::new();
         let mut tree = BPlusTree::open(storage);
-        let values = generate_random_dataset(10000);
 
-        for rec in &values {
-            tree.insert(*rec);
-        }
-        for rec in &values {
-            assert_eq!(tree.find(rec[0]), Some(*rec));
-        }
+        let r1 = [1, 1, 1, 1, 1, 1, 1];
+        let r2 = [1, 9, 9, 9, 9, 9, 9];
+
+        tree.insert(r1);
+        tree.insert(r2);
+
+        assert_eq!(tree.find(1), Some(r2));
     }
 }
