@@ -2,3 +2,4 @@
 .DS_Store
 btree.idx
 .stignore
+*.db
