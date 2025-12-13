@@ -226,6 +226,35 @@ where
             }
         }
     }
+
+    pub fn dump_records(&mut self) {
+        let mut loc = self.leftmost_leaf();
+
+        while let Some(Node::Leaf(leaf)) = self.storage.read_node(loc) {
+            for record in &leaf.values {
+                println!("{:?}", record);
+            }
+
+            match leaf.next {
+                Some(next) => loc = next,
+                None => break,
+            }
+        }
+    }
+
+    fn leftmost_leaf(&mut self) -> usize {
+        let mut loc = self.header.root;
+
+        loop {
+            match self.storage.read_node(loc) {
+                Some(Node::Internal(internal)) => {
+                    loc = internal.children[0];
+                }
+                Some(Node::Leaf(_)) => return loc,
+                _ => panic!("Corrupt tree"),
+            }
+        }
+    }
 }
 
 #[cfg(test)]
