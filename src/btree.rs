@@ -21,7 +21,7 @@ where
         }
     }
 
-    pub fn find(&self, key: i32) -> Option<Record> {
+    pub fn find(&mut self, key: i32) -> Option<Record> {
         let mut current_loc = self.root_loc;
         loop {
             let node = self.storage.read_node(current_loc)?;
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn test_non_existent_key() {
         let storage = InMemoryStorage::new();
-        let tree = BPlusTree::open(storage);
+        let mut tree = BPlusTree::open(storage);
         assert_eq!(tree.find(999), None); // Assuming 999 is not in the tree
     }
 

@@ -1,13 +1,15 @@
+use bincode::{Decode, Encode};
+
 use crate::config::DEGREE;
 use crate::record::Record;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq)]
 pub enum Node {
     Leaf(LeafNode),
     Internal(InternalNode),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq)]
 pub struct LeafNode {
     pub keys: Vec<i32>,
     pub values: Vec<Record>,
@@ -24,7 +26,7 @@ impl LeafNode {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq)]
 pub struct InternalNode {
     pub keys: Vec<i32>,
     pub children: Vec<usize>,

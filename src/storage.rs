@@ -1,7 +1,7 @@
 use crate::node::Node;
 
 pub trait Storage {
-    fn read_node(&self, loc: usize) -> Option<Node>;
+    fn read_node(&mut self, loc: usize) -> Option<Node>;
     fn write_node(&mut self, loc: usize, node: &Node);
     fn total_nodes(&self) -> usize;
 }
@@ -18,7 +18,7 @@ impl InMemoryStorage {
 }
 
 impl Storage for InMemoryStorage {
-    fn read_node(&self, loc: usize) -> Option<Node> {
+    fn read_node(&mut self, loc: usize) -> Option<Node> {
         self.nodes.get(loc)?.clone()
     }
 

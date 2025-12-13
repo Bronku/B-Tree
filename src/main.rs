@@ -1,13 +1,13 @@
 mod btree;
 mod config;
+mod file_storage;
 mod node;
 mod record;
 mod storage;
-use crate::btree::BPlusTree;
-use crate::storage::InMemoryStorage;
+use crate::{btree::BPlusTree, file_storage::FileStorage};
 
 fn main() {
-    let storage = InMemoryStorage::new();
+    let storage = FileStorage::new("data.db");
     let mut tree = BPlusTree::open(storage);
 
     // Insert some key-value pairs
