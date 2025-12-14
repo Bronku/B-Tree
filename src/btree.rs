@@ -142,9 +142,7 @@ where
         let mut all_values = left.values;
         all_values.append(&mut right.values);
 
-        let mut combined: Vec<_> = all_keys.into_iter().zip(all_values.into_iter()).collect();
-        combined.sort_unstable_by_key(|(k, _)| *k);
-
+        let combined: Vec<_> = all_keys.into_iter().zip(all_values.into_iter()).collect();
         let mid = combined.len() / 2;
 
         left.keys = combined[..mid].iter().map(|(k, _)| *k).collect();
@@ -361,22 +359,20 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::file_storage::FileStorage;
-
     use super::*;
-
+    use crate::config::test_config::*;
+    use crate::file_storage::FileStorage;
     use proptest::prelude::*;
-    use proptest::proptest;
+    use std::collections::BTreeMap;
     use tempfile::NamedTempFile;
 
-    use std::collections::BTreeMap;
+    fn temp_storage() -> FileStorage {
+        let file = NamedTempFile::new().unwrap();
+        FileStorage::new(file.path().to_str().unwrap())
+    }
 
     fn arb_record() -> impl Strategy<Value = Record> {
         prop::array::uniform7(any::<i32>())
-    }
-
-    fn arb_key() -> impl Strategy<Value = i32> {
-        any::<i32>()
     }
 
     #[derive(Debug, Clone)]
@@ -387,46 +383,31 @@ mod tests {
 
     fn arb_op() -> impl Strategy<Value = Op> {
         prop_oneof![
-            arb_record().prop_map(Op::Insert),
-            arb_key().prop_map(Op::Find),
+            3 => arb_record().prop_map(Op::Insert),
+            1 => any::<i32>().prop_map(Op::Find),
         ]
-    }
-
-    fn arb_ops() -> impl Strategy<Value = Vec<Op>> {
-        // Long enough to trigger many splits, but still fast
-        prop::collection::vec(arb_op(), 1..500)
-    }
-
-    fn temp_storage() -> FileStorage {
-        let file = NamedTempFile::new().unwrap();
-        FileStorage::new(file.path().to_str().unwrap())
     }
 
     proptest! {
         #![proptest_config(ProptestConfig {
-            cases: 200,
-            .. ProptestConfig::default()
+            cases: PROPTEST_CASES,
+            ..ProptestConfig::default()
         })]
 
         #[test]
-        fn prop_bplustree_matches_btreemap(ops in arb_ops()) {
+        fn prop_matches_btreemap(ops in prop::collection::vec(arb_op(), MIN_OPS..MAX_OPS)) {
             let storage = temp_storage();
             let mut tree = BPlusTree::open(storage);
-
             let mut model = BTreeMap::<i32, Record>::new();
 
             for op in ops {
                 match op {
                     Op::Insert(record) => {
-                        let key = record[0];
                         tree.insert(record);
-                        model.insert(key, record);
+                        model.insert(record[0], record);
                     }
-
                     Op::Find(key) => {
-                        let tree_res = tree.find(key);
-                        let model_res = model.get(&key).copied();
-                        prop_assert_eq!(tree_res, model_res);
+                        prop_assert_eq!(tree.find(key), model.get(&key).copied());
                     }
                 }
             }
@@ -434,8 +415,15 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: PROPTEST_CASES,
+            ..ProptestConfig::default()
+        })]
+
         #[test]
-        fn prop_all_inserted_keys_are_findable(records in prop::collection::vec(arb_record(), 0..1000)) {
+        fn prop_all_inserted_findable(
+            records in prop::collection::vec(arb_record(), MIN_RECORDS..MAX_RECORDS)
+        ) {
             let storage = temp_storage();
             let mut tree = BPlusTree::open(storage);
             let mut model = BTreeMap::<i32, Record>::new();
@@ -445,12 +433,69 @@ mod tests {
                 model.insert(rec[0], rec);
             }
 
-
-            for (key, value) in model {
-                if tree.find(key) != Some(value) {
+            for (&key, &value) in &model {
+                let found = tree.find(key);
+                if found != Some(value) {
+                    // Debug output on failure
+                    println!("Failed to find key: {}", key);
                     tree.dump_tree();
-                    tree.storage.dump_pages();
                 }
+                prop_assert_eq!(found, Some(value));
+            }
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: PROPTEST_CASES / 2,
+            ..ProptestConfig::default()
+        })]
+
+        #[test]
+        fn prop_sequential_inserts(start in any::<i32>(), count in 0usize..MAX_RECORDS/2) {
+            let storage = temp_storage();
+            let mut tree = BPlusTree::open(storage);
+            let mut model = BTreeMap::<i32, Record>::new();
+
+            for i in 0..count {
+                let key = start.wrapping_add(i as i32);
+                let record = [key, 0, 0, 0, 0, 0, 0];
+                tree.insert(record);
+                model.insert(key, record);
+            }
+
+            for (&key, &value) in &model {
+                prop_assert_eq!(tree.find(key), Some(value));
+            }
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: PROPTEST_CASES / 2,
+            ..ProptestConfig::default()
+        })]
+
+        #[test]
+        fn prop_updates_overwrite(
+            records in prop::collection::vec(arb_record(), 1..MAX_RECORDS/4)
+        ) {
+            let storage = temp_storage();
+            let mut tree = BPlusTree::open(storage);
+
+            for rec in &records {
+                tree.insert(*rec);
+            }
+
+            let mut final_values = BTreeMap::new();
+            for rec in &records {
+                let key = rec[0];
+                let updated = [key, 99, 88, 77, 66, 55, 44];
+                tree.insert(updated);
+                final_values.insert(key, updated);
+            }
+
+            for (&key, &value) in &final_values {
                 prop_assert_eq!(tree.find(key), Some(value));
             }
         }
@@ -469,7 +514,7 @@ mod tests {
     }
 
     #[test]
-    fn sanity_update_overwrites_value() {
+    fn sanity_update_overwrites() {
         let storage = temp_storage();
         let mut tree = BPlusTree::open(storage);
 
@@ -480,5 +525,41 @@ mod tests {
         tree.insert(r2);
 
         assert_eq!(tree.find(1), Some(r2));
+    }
+
+    #[test]
+    fn sanity_empty_tree() {
+        let storage = temp_storage();
+        let mut tree = BPlusTree::open(storage);
+
+        assert_eq!(tree.find(1), None);
+    }
+
+    #[test]
+    fn sanity_multiple_inserts() {
+        let storage = temp_storage();
+        let mut tree = BPlusTree::open(storage);
+
+        for i in 0..20 {
+            tree.insert([i, i, i, i, i, i, i]);
+        }
+
+        for i in 0..20 {
+            assert_eq!(tree.find(i), Some([i, i, i, i, i, i, i]));
+        }
+    }
+
+    #[test]
+    fn compensation_triggers_correctly() {
+        let storage = temp_storage();
+        let mut tree = BPlusTree::open(storage);
+
+        for i in 0..(MAX_KEYS * 3) {
+            tree.insert([i as i32, 0, 0, 0, 0, 0, 0]);
+        }
+
+        for i in 0..(MAX_KEYS * 3) {
+            assert_eq!(tree.find(i as i32), Some([i as i32, 0, 0, 0, 0, 0, 0]));
+        }
     }
 }
