@@ -94,6 +94,10 @@ where
                 leaf.values.push(value);
             }
 
+            if self.try_compensation(current_loc, leaf.clone(), &mut path) {
+                return;
+            }
+
             self.storage
                 .write_node(current_loc, &Node::Leaf(leaf.clone()));
 
@@ -101,6 +105,94 @@ where
                 self.split_leaf(current_loc, leaf, &mut path);
             }
         }
+    }
+
+    fn compensate(
+        mut left: LeafNode,
+        mut right: LeafNode,
+        mut parent: InternalNode,
+        left_loc: usize,
+        right_loc: usize,
+    ) -> Option<(LeafNode, LeafNode, InternalNode)> {
+        if left.values.len() + right.values.len() > MAX_KEYS * 2 {
+            return None;
+        }
+
+        let mut combined: Vec<(i32, Record)> = left
+            .keys
+            .into_iter()
+            .zip(left.values.into_iter())
+            .chain(right.keys.into_iter().zip(right.values.into_iter()))
+            .collect();
+
+        combined.sort_by_key(|(k, _)| *k);
+
+        let mid = combined.len() / 2;
+        let left_part = &combined[..mid];
+        let right_part = &combined[mid..];
+
+        left.keys = left_part.iter().map(|(k, _)| *k).collect();
+        left.values = left_part.iter().map(|(_, v)| *v).collect();
+
+        right.keys = right_part.iter().map(|(k, _)| *k).collect();
+        right.values = right_part.iter().map(|(_, v)| *v).collect();
+
+        let left_idx = parent.children.iter().position(|&c| c == left_loc)?;
+        let right_idx = parent.children.iter().position(|&c| c == right_loc)?;
+
+        if right_idx != left_idx + 1 {
+            return None;
+        }
+
+        parent.keys[left_idx] = right.keys[0];
+
+        Some((left, right, parent))
+    }
+
+    fn try_compensation(
+        &mut self,
+        loc: usize,
+        leaf: LeafNode,
+        path: &mut Vec<(usize, InternalNode)>,
+    ) -> bool {
+        if path.is_empty() {
+            return false;
+        }
+
+        let (parent_loc, parent) = path.last().unwrap().clone();
+
+        if let Some(idx_in_parent) = parent.children.iter().position(|&c| c == loc) {
+            if idx_in_parent > 0 {
+                let left_loc = parent.children[idx_in_parent - 1];
+                if let Some(Node::Leaf(left_sibling)) = self.storage.read_node(left_loc) {
+                    if let Some((new_left, new_right, new_parent)) =
+                        Self::compensate(left_sibling, leaf.clone(), parent.clone(), left_loc, loc)
+                    {
+                        self.storage.write_node(left_loc, &Node::Leaf(new_left));
+                        self.storage.write_node(loc, &Node::Leaf(new_right));
+                        self.storage
+                            .write_node(parent_loc, &Node::Internal(new_parent));
+                        return true;
+                    }
+                }
+            }
+        }
+
+        if let Some(right_loc) = leaf.next {
+            if let Some(Node::Leaf(right_sibling)) = self.storage.read_node(right_loc) {
+                if let Some((new_left, new_right, new_parent)) =
+                    Self::compensate(leaf.clone(), right_sibling, parent.clone(), loc, right_loc)
+                {
+                    self.storage.write_node(loc, &Node::Leaf(new_left));
+                    self.storage.write_node(right_loc, &Node::Leaf(new_right));
+                    self.storage
+                        .write_node(parent_loc, &Node::Internal(new_parent));
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     fn split_leaf(&mut self, loc: usize, leaf: LeafNode, path: &mut Vec<(usize, InternalNode)>) {
@@ -343,7 +435,12 @@ mod tests {
                 model.insert(rec[0], rec);
             }
 
+
             for (key, value) in model {
+                if tree.find(key) != Some(value) {
+                    tree.dump_tree();
+                    tree.storage.dump_pages();
+                }
                 prop_assert_eq!(tree.find(key), Some(value));
             }
         }

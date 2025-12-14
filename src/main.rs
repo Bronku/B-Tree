@@ -28,7 +28,6 @@ fn main() {
 
 fn repl(tree: &mut BPlusTree<FileStorage>) {
     loop {
-        print!("> ");
         io::stdout().flush().unwrap();
 
         let mut input = String::new();
