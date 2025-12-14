@@ -57,6 +57,114 @@ where
         }
     }
 
+    fn try_compensate_siblings(
+        &mut self,
+        loc: usize,
+        leaf: LeafNode,
+        path: &mut Vec<(usize, InternalNode)>,
+    ) -> bool {
+        if path.is_empty() {
+            return false;
+        }
+
+        let (parent_loc, parent) = path.last().unwrap();
+        let parent_loc = *parent_loc;
+
+        // Find our position in parent
+        let idx_in_parent = match parent.children.iter().position(|&c| c == loc) {
+            Some(idx) => idx,
+            None => return false,
+        };
+
+        // Try left sibling first
+        if idx_in_parent > 0 {
+            let left_loc = parent.children[idx_in_parent - 1];
+            if let Some(Node::Leaf(left_sibling)) = self.storage.read_node(left_loc) {
+                if let Some((new_left, new_right, new_parent)) = Self::compensate_leaves(
+                    left_sibling,
+                    leaf.clone(),
+                    parent.clone(),
+                    left_loc,
+                    loc,
+                ) {
+                    self.storage.write_node(left_loc, &Node::Leaf(new_left));
+                    self.storage.write_node(loc, &Node::Leaf(new_right));
+
+                    // Update parent in path and storage
+                    path.last_mut().unwrap().1 = new_parent.clone();
+                    self.storage
+                        .write_node(parent_loc, &Node::Internal(new_parent));
+                    return true;
+                }
+            }
+        }
+
+        if idx_in_parent + 1 < parent.children.len() {
+            let right_loc = parent.children[idx_in_parent + 1];
+            if let Some(Node::Leaf(right_sibling)) = self.storage.read_node(right_loc) {
+                if let Some((new_left, new_right, new_parent)) = Self::compensate_leaves(
+                    leaf.clone(),
+                    right_sibling,
+                    parent.clone(),
+                    loc,
+                    right_loc,
+                ) {
+                    self.storage.write_node(loc, &Node::Leaf(new_left));
+                    self.storage.write_node(right_loc, &Node::Leaf(new_right));
+
+                    // Update parent in path and storage
+                    path.last_mut().unwrap().1 = new_parent.clone();
+                    self.storage
+                        .write_node(parent_loc, &Node::Internal(new_parent));
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    fn compensate_leaves(
+        mut left: LeafNode,
+        mut right: LeafNode,
+        mut parent: InternalNode,
+        left_loc: usize,
+        right_loc: usize,
+    ) -> Option<(LeafNode, LeafNode, InternalNode)> {
+        let total = left.keys.len() + right.keys.len();
+
+        if total > MAX_KEYS * 2 {
+            return None;
+        }
+
+        let mut all_keys = left.keys;
+        all_keys.append(&mut right.keys);
+        let mut all_values = left.values;
+        all_values.append(&mut right.values);
+
+        let mut combined: Vec<_> = all_keys.into_iter().zip(all_values.into_iter()).collect();
+        combined.sort_unstable_by_key(|(k, _)| *k);
+
+        let mid = combined.len() / 2;
+
+        left.keys = combined[..mid].iter().map(|(k, _)| *k).collect();
+        left.values = combined[..mid].iter().map(|(_, v)| *v).collect();
+
+        right.keys = combined[mid..].iter().map(|(k, _)| *k).collect();
+        right.values = combined[mid..].iter().map(|(_, v)| *v).collect();
+
+        let left_idx = parent.children.iter().position(|&c| c == left_loc)?;
+        let right_idx = parent.children.iter().position(|&c| c == right_loc)?;
+
+        if right_idx != left_idx + 1 {
+            return None;
+        }
+
+        parent.keys[left_idx] = right.keys[0];
+
+        Some((left, right, parent))
+    }
+
     pub fn insert(&mut self, value: Record) {
         let key = value[0];
         let mut path = Vec::new();
@@ -73,28 +181,18 @@ where
             current_node = self.storage.read_node(current_loc).unwrap();
         }
 
-        // Insert into the leaf node
         if let Node::Leaf(mut leaf) = current_node {
-            // Insert or update the key-value pair
-            let mut inserted = false;
-            for (i, k) in leaf.keys.iter_mut().enumerate() {
-                if *k == key {
+            match leaf.keys.binary_search(&key) {
+                Ok(i) => {
                     leaf.values[i] = value;
-                    inserted = true;
-                    break;
-                } else if key < *k {
+                }
+                Err(i) => {
                     leaf.keys.insert(i, key);
                     leaf.values.insert(i, value);
-                    inserted = true;
-                    break;
                 }
             }
-            if !inserted {
-                leaf.keys.push(key);
-                leaf.values.push(value);
-            }
 
-            if self.try_compensation(current_loc, leaf.clone(), &mut path) {
+            if self.try_compensate_siblings(current_loc, leaf.clone(), &mut path) {
                 return;
             }
 
@@ -105,94 +203,6 @@ where
                 self.split_leaf(current_loc, leaf, &mut path);
             }
         }
-    }
-
-    fn compensate(
-        mut left: LeafNode,
-        mut right: LeafNode,
-        mut parent: InternalNode,
-        left_loc: usize,
-        right_loc: usize,
-    ) -> Option<(LeafNode, LeafNode, InternalNode)> {
-        if left.values.len() + right.values.len() > MAX_KEYS * 2 {
-            return None;
-        }
-
-        let mut combined: Vec<(i32, Record)> = left
-            .keys
-            .into_iter()
-            .zip(left.values.into_iter())
-            .chain(right.keys.into_iter().zip(right.values.into_iter()))
-            .collect();
-
-        combined.sort_by_key(|(k, _)| *k);
-
-        let mid = combined.len() / 2;
-        let left_part = &combined[..mid];
-        let right_part = &combined[mid..];
-
-        left.keys = left_part.iter().map(|(k, _)| *k).collect();
-        left.values = left_part.iter().map(|(_, v)| *v).collect();
-
-        right.keys = right_part.iter().map(|(k, _)| *k).collect();
-        right.values = right_part.iter().map(|(_, v)| *v).collect();
-
-        let left_idx = parent.children.iter().position(|&c| c == left_loc)?;
-        let right_idx = parent.children.iter().position(|&c| c == right_loc)?;
-
-        if right_idx != left_idx + 1 {
-            return None;
-        }
-
-        parent.keys[left_idx] = right.keys[0];
-
-        Some((left, right, parent))
-    }
-
-    fn try_compensation(
-        &mut self,
-        loc: usize,
-        leaf: LeafNode,
-        path: &mut Vec<(usize, InternalNode)>,
-    ) -> bool {
-        if path.is_empty() {
-            return false;
-        }
-
-        let (parent_loc, parent) = path.last().unwrap().clone();
-
-        if let Some(idx_in_parent) = parent.children.iter().position(|&c| c == loc) {
-            if idx_in_parent > 0 {
-                let left_loc = parent.children[idx_in_parent - 1];
-                if let Some(Node::Leaf(left_sibling)) = self.storage.read_node(left_loc) {
-                    if let Some((new_left, new_right, new_parent)) =
-                        Self::compensate(left_sibling, leaf.clone(), parent.clone(), left_loc, loc)
-                    {
-                        self.storage.write_node(left_loc, &Node::Leaf(new_left));
-                        self.storage.write_node(loc, &Node::Leaf(new_right));
-                        self.storage
-                            .write_node(parent_loc, &Node::Internal(new_parent));
-                        return true;
-                    }
-                }
-            }
-        }
-
-        if let Some(right_loc) = leaf.next {
-            if let Some(Node::Leaf(right_sibling)) = self.storage.read_node(right_loc) {
-                if let Some((new_left, new_right, new_parent)) =
-                    Self::compensate(leaf.clone(), right_sibling, parent.clone(), loc, right_loc)
-                {
-                    self.storage.write_node(loc, &Node::Leaf(new_left));
-                    self.storage.write_node(right_loc, &Node::Leaf(new_right));
-                    self.storage
-                        .write_node(parent_loc, &Node::Internal(new_parent));
-                    return true;
-                }
-            }
-        }
-
-        false
     }
 
     fn split_leaf(&mut self, loc: usize, leaf: LeafNode, path: &mut Vec<(usize, InternalNode)>) {
