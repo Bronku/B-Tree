@@ -30,6 +30,38 @@ where
         }
     }
 
+    pub fn calculate_depth(&mut self) -> usize {
+        let mut depth = 0;
+        let mut loc = self.header.root;
+
+        loop {
+            match self.storage.read_node(loc) {
+                Some(Node::Internal(internal)) => {
+                    depth += 1;
+                    loc = internal.children[0];
+                }
+                Some(Node::Leaf(_)) => {
+                    return depth + 1;
+                }
+                _ => panic!("Corrupt tree"),
+            }
+        }
+    }
+
+    pub fn count_total_keys(&mut self) -> usize {
+        let mut count = 0;
+        let mut loc = self.leftmost_leaf();
+
+        while let Some(Node::Leaf(leaf)) = self.storage.read_node(loc) {
+            count += leaf.keys.len();
+            match leaf.next {
+                Some(next) => loc = next,
+                None => break,
+            }
+        }
+        count
+    }
+
     pub fn find(&mut self, key: i32) -> Option<Record> {
         let mut current_loc = self.header.root;
         loop {

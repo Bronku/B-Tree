@@ -60,6 +60,27 @@ fn repl(tree: &mut BPlusTree<FileStorage>) {
             continue;
         }
 
+        if input == "depth" {
+            let depth = tree.calculate_depth();
+            println!("Tree depth: {}", depth);
+            continue;
+        }
+
+        if input == "keys" {
+            let count = tree.count_total_keys();
+            println!("total keys: {}", count);
+            continue;
+        }
+
+        if input == "stats" {
+            let reads = tree.storage.page_reads;
+            let writes = tree.storage.page_writes;
+            println!("Page reads: {}", reads);
+            println!("Page writes: {}", writes);
+            println!("Total I/O: {}", reads + writes);
+            continue;
+        }
+
         match handle_command(tree, input) {
             Ok(()) => {}
             Err(err) => println!("Error: {}", err),
