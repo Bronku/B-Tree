@@ -25,5 +25,13 @@ The tree is built with a focus on **implementation-level transparency**:
 
 ### Build and Run
 ```bash
-cargo run
+cargo build --release
+./target/release/btree my_database.db
 ```
+## Repl Commands
+Once running, you can use the following commands:
+-`insert <k> <x> <a1> <a2> <a3> <a4> <a5>`- Insert a record (7 integers).
+- `find <key>` - Search for a specific key.
+- `tree` - Visual dump of the tree structure.
+- `stats` - Show I/O performance (Reads/Writes).
+- `exit` - Close the database.
